@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Absensi Workshop Berbasis QR Code</title>
+    <!-- Tailwind CSS v4 -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- QR Code Scanner Library -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <!-- FingerprintJS untuk Anti-Double Scan Device -->
+    <script src="https://openfpcdn.io/fingerprintjs/v3"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        #reader video { border-radius: 1rem; object-fit: cover; width: 100% !important; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-100 min-h-screen flex flex-col justify-between antialiased">
+
+    <!-- Header -->
+    <header class="w-full py-5 px-6 border-b border-slate-800/80 backdrop-blur-md bg-slate-950/60 sticky top-0 z-50 shadow-lg">
+        <div class="max-w-xl mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="h-10 w-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold shadow-md shadow-indigo-500/10">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-sm font-bold tracking-wide text-white">ABSENSI WORKSHOP</h1>
+                    <p class="text-xs text-indigo-400 font-medium">Scan QR Code Peserta</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2 bg-indigo-950/60 border border-indigo-800/50 px-3 py-1.5 rounded-full text-xs text-indigo-300">
+                <span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span id="status-koneksi">Siap Scan</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-md w-full mx-auto px-4 py-8 flex-grow flex flex-col justify-center">
+        
+        <!-- Peringatan Jika Perangkat Terkunci (Anti-Double Scan Device) -->
+        <div id="device-locked-alert" class="hidden bg-gradient-to-b from-rose-950/90 to-slate-900 border border-rose-600/50 rounded-2xl p-6 text-center shadow-2xl backdrop-blur-xl">
+            <div class="h-16 w-16 bg-rose-500/10 border border-rose-500/30 rounded-full flex items-center justify-center mx-auto mb-4 text-rose-400">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+            <h2 class="font-bold text-rose-200 text-xl tracking-tight mb-2">Perangkat Telah Digunakan</h2>
+            <p class="text-xs text-rose-300/80 leading-relaxed mb-4">Perangkat ini sudah digunakan untuk mencatat kehadiran sebelumnya. Kebijakan sistem membatasi 1 perangkat untuk 1 kali absensi.</p>
+        </div>
+
+        <!-- Scanner Card -->
+        <div id="absensi-card" class="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+            <div class="absolute -top-24 -right-24 w-48 h-48 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div class="text-center mb-5">
+                <h2 class="text-base font-bold text-white tracking-tight">Arahkan Kamera ke QR Code Peserta</h2>
+                <p class="text-xs text-slate-400 mt-1">Sistem akan otomatis mencocokkan data di Google Sheets</p>
+            </div>
+
+            <!-- Kamera QR Reader -->
+            <div class="mb-4">
+                <div id="reader" class="overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950 p-2 shadow-inner"></div>
+            </div>
+
+            <!-- Informasi Hasil Scan / Status -->
+            <div id="scan-result" class="text-center text-xs text-indigo-300 bg-indigo-950/40 border border-indigo-900/40 py-3 px-4 rounded-xl font-medium">
+                📷 Kamera aktif. Silakan scan QR Code pada kartu peserta.
+            </div>
+
+            <!-- Kartu Sukses Presensi -->
+            <div id="success-box" class="hidden mt-4 bg-emerald-950/40 border border-emerald-600/50 rounded-2xl p-4 text-left">
+                <div class="flex items-center space-x-2 text-emerald-400 font-bold text-sm mb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Absensi Berhasil Dicatat!</span>
+                </div>
+                <div class="text-xs space-y-1 text-slate-300">
+                    <p><strong>Nama:</strong> <span id="res-nama">-</span></p>
+                    <p><strong>Email:</strong> <span id="res-email">-</span></p>
+                    <p><strong>Instansi:</strong> <span id="res-univ">-</span></p>
+                    <p><strong>Prodi:</strong> <span id="res-prodi">-</span></p>
+                </div>
+                <button onclick="location.reload()" class="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 rounded-xl text-xs transition-all shadow-lg shadow-emerald-600/20">
+                    Scan Peserta Berikutnya
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-6 text-center text-xs text-slate-500 border-t border-slate-900/80 bg-slate-950/50">
+        <p>&copy; 2026 Sistem Presensi Workshop Pintar. All rights reserved.</p>
+    </footer>
+
+    <!-- Skrip Logika -->
+    <script>
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbykVPTwoq-OlTlaW2j1RMlCt_p_0eQziJNPf3-_pDoBdYdLQy2_Hra73QrDnB6Jk_xWyw/exec"; // Ganti dengan URL deployment Apps Script Anda
+        let deviceId = "";
+
+        window.addEventListener('load', async () => {
+            const fp = await FingerprintJS.load();
+            const result = await fp.get();
+            deviceId = result.visitorId;
+
+            // Cek localStorage perangkat
+            if (localStorage.getItem('workshop_device_locked')) {
+                showLockedState();
+            } else {
+                initScanner();
+            }
+        });
+
+        function showLockedState() {
+            document.getElementById('absensi-card').classList.add('hidden');
+            document.getElementById('device-locked-alert').classList.remove('hidden');
+        }
+
+        function initScanner() {
+            const html5QrCode = new Html5Qrcode("reader");
+            
+            const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+                html5QrCode.stop().then(() => {
+                    document.getElementById('scan-result').className = "text-center text-xs text-amber-400 bg-amber-950/40 border border-amber-900/40 py-3 px-4 rounded-xl font-medium animate-pulse";
+                    document.getElementById('scan-result').innerText = "⏳ Memvalidasi data peserta ke Google Sheets...";
+                    sendDataToServer(decodedText, deviceId);
+                }).catch(err => console.error(err));
+            };
+
+            const config = { fps: 10, qrbox: { width: 240, height: 240 } };
+            html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback).catch(err => {
+                document.getElementById('scan-result').innerText = "❌ Gagal mengakses kamera. Periksa izin browser Anda.";
+            });
+        }
+
+        async function sendDataToServer(qrValue, deviceId) {
+            try {
+                // Menggunakan fetch standar (karena response JSON dari Apps Script)
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Menghindari CORS preflight issue di Google Apps Script
+                    body: JSON.stringify({ qrValue, deviceId })
+                });
+                
+                const result = await response.json();
+
+                if (result.status === "success") {
+                    // Kunci perangkat agar tidak bisa scan ganda
+                    localStorage.setItem('workshop_device_locked', 'true');
+                    
+                    // Tampilkan hasil sukses
+                    document.getElementById('scan-result').classList.add('hidden');
+                    document.getElementById('reader').parentElement.classList.add('hidden');
+                    
+                    document.getElementById('res-nama').innerText = result.data.nama;
+                    document.getElementById('res-email').innerText = result.data.email;
+                    document.getElementById('res-univ').innerText = result.data.universitas;
+                    document.getElementById('res-prodi').innerText = result.data.prodi;
+                    
+                    document.getElementById('success-box').classList.remove('hidden');
+                } else {
+                    alert("⚠️ " + result.message);
+                    location.reload(); // Refresh untuk scan ulang jika gagal/ditolak
+                }
+            } catch (error) {
+                alert("❌ Gagal terhubung ke server database. Periksa koneksi internet Anda.");
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>
